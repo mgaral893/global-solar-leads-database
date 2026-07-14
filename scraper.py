@@ -47,21 +47,28 @@ COUNTRY_DATA = {
         "csv": "uk_solar_installers.csv",
         "locations": [
             "London", "Manchester", "Birmingham", "Leeds", "Glasgow", "Edinburgh", "Liverpool", "Bristol", 
-            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton"
+            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton",
+            "Bradford", "Wakefield", "Sunderland", "Doncaster", "Stockport", "Sefton", "Wirral", "Wigan",
+            "Dudley", "Kirklees", "Bolton", "Plymouth", "Hull", "Brighton", "Derby", "Stoke-on-Trent",
+            "Wolverhampton", "Swansea", "Salford", "Portsmouth", "Aberdeen", "York", "Reading", "Oxford"
         ]
     },
     "CA": {
         "csv": "ca_solar_installers.csv",
         "locations": [
             "Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba", "Saskatchewan", "Nova Scotia", 
-            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City"
+            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City",
+            "Hamilton", "Kitchener", "London Ontario", "Victoria BC", "Halifax", "Windsor CA", "Saskatoon",
+            "Regina", "Sherbrooke", "St Johns NL", "Barrie", "Kelowna", "Abbotsford", "Sudbury", "Kingston"
         ]
     },
     "AU": {
         "csv": "au_solar_installers.csv",
         "locations": [
             "New South Wales", "Victoria", "Queensland", "Western Australia", "South Australia", "Tasmania", 
-            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast"
+            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast",
+            "Newcastle NSW", "Wollongong", "Geelong", "Townsville", "Cairns", "Toowoomba", "Darwin",
+            "Launceston", "Ballarat", "Bendigo", "Albury", "Mackay", "Rockhampton", "Bunbury"
         ]
     }
 }

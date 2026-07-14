@@ -192,21 +192,16 @@ def create_gumroad_product(token, country_code):
             }
             requests.put(update_url, headers=headers, json=update_payload, timeout=10)
             
-            # Upload Cover Image if it exists
+            # Note: Cover images cannot be programmatically uploaded via API in 2026.
+            # They must be uploaded manually by the creator in the Gumroad Dashboard.
             cover_path = pdata["cover"]
             if os.path.exists(cover_path):
-                logger.info(f"Uploading cover image '{cover_path}' for product {product_id}...")
-                cover_url = f"https://api.gumroad.com/v2/products/{product_id}/cover"
-                with open(cover_path, "rb") as f:
-                    files = {"file": f}
-                    r_cover = requests.post(cover_url, headers=headers, files=files, timeout=20)
-                    if r_cover.status_code in [200, 201]:
-                        logger.info("✅ Cover image uploaded successfully!")
-                    else:
-                        logger.warning(f"⚠️ Cover upload returned code {r_cover.status_code}: {r_cover.text}")
+                logger.info(f"💡 Premium cover cover image generated at '{cover_path}'. Please upload it manually in the Gumroad Dashboard.")
             
             return product_id, short_url
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"Error registering product on Gumroad for {country_code}: {e}")
     return None, None
 
@@ -380,9 +375,10 @@ def main():
     short_url = config[cc].get("short_url")
     
     if not product_id:
-        product_id = create_gumroad_product(token, cc)
+        product_id, short_url = create_gumroad_product(token, cc)
         if product_id:
             config[cc]["product_id"] = product_id
+            config[cc]["short_url"] = short_url
             save_config(config)
             
     # If short_url is not cached, fetch it from Gumroad API

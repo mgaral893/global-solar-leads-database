@@ -2,7 +2,8 @@
     "US": {
         "gdrive_file_id": "1CsZxRJqxgfEl0OSfocosQxyywZ2cyYtl",
         "product_id": "rtX8qtIPM_AWKxwzOaU3kA==",
-        "gdrive_folder_id": "1SZTW5rPk7E6mlPy13SotrASG4C7tTfX0"
+        "gdrive_folder_id": "1SZTW5rPk7E6mlPy13SotrASG4C7tTfX0",
+        "short_url": "https://agymaia.gumroad.com/l/tyrnzm"
     },
     "AU": {
         "gdrive_file_id": "1Ckqwpe2RewmpzHVfT1iJ25NL5fTyi7fM",
@@ -19,9 +20,7 @@
     "CA": {
         "gdrive_folder_id": "1uro57ujmZuseazuuUeG_-Tb0sgHfISiI",
         "gdrive_file_id": "1K0Ec2wjj73RVUAJvrWIe47WxWmbqXnCt",
-        "product_id": [
-            "mk0bgvJWQsdHLFXWCIAHrQ==",
-            "https://agymaia.gumroad.com/l/qsfzup"
-        ]
+        "product_id": "mk0bgvJWQsdHLFXWCIAHrQ==",
+        "short_url": "https://agymaia.gumroad.com/l/qsfzup"
     }
 }
