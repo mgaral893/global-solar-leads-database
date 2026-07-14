@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/ubuntu/agi-agent/venv/bin/python3
 """
 Global Solar Leads Database Scraper (Resilient Enterprise Engine v1)
 ====================================================================
@@ -40,28 +40,37 @@ COUNTRY_DATA = {
             "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina",
             "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
             "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
-            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago"
+            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago",
+            "Austin", "Jacksonville", "Fort Worth", "Columbus", "Charlotte", "Indianapolis", "San Francisco", "Seattle", "Denver"
         ]
     },
     "UK": {
         "csv": "uk_solar_installers.csv",
         "locations": [
             "London", "Manchester", "Birmingham", "Leeds", "Glasgow", "Edinburgh", "Liverpool", "Bristol", 
-            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton"
+            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton",
+            "Brighton", "Bristol", "Oxford", "Cambridge", "Bath", "Derby", "Exeter", "Gloucester", "Lincoln", "Norwich",
+            "Plymouth", "Portsmouth", "Preston", "Salisbury", "St Albans", "Sunderland", "Wakefield", "York", "Aberdeen",
+            "Dundee", "Swansea", "Newport", "Milton Keynes", "Reading", "Northampton", "Luton", "Swindon", "Warrington"
         ]
     },
     "CA": {
         "csv": "ca_solar_installers.csv",
         "locations": [
             "Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba", "Saskatchewan", "Nova Scotia", 
-            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City"
+            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City",
+            "Mississauga", "Brampton", "Hamilton", "London", "Markham", "Vaughan", "Kitchener", "Windsor", "Richmond Hill",
+            "Oakville", "Burlington", "Greater Sudbury", "Oshawa", "Barrie", "St Catharines", "Cambridge", "Kingston",
+            "Guelph", "Waterloo", "Thunder Bay", "Brantford", "Pickering", "Niagara Falls", "Victoria", "Kelowna"
         ]
     },
     "AU": {
         "csv": "au_solar_installers.csv",
         "locations": [
             "New South Wales", "Victoria", "Queensland", "Western Australia", "South Australia", "Tasmania", 
-            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast"
+            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast",
+            "Newcastle", "Wollongong", "Geelong", "Townsville", "Cairns", "Toowoomba", "Ballarat", "Bendigo", "Albury",
+            "Launceston", "Mackay", "Rockhampton", "Bunbury", "Bundaberg", "Coffs Harbour", "Wagga Wagga", "Mildura"
         ]
     }
 }
@@ -410,8 +419,8 @@ def build_database(max_queries=20):
     # 2. Gather domains by global locations
     queries_to_run = LOCATIONS[:max_queries]
     for idx, loc in enumerate(queries_to_run):
-        # We loop through 2 targeted B2B query types per region
-        for query_type in ["solar installers", "solar energy contractors"]:
+        # We loop through 4 targeted B2B query types per region to maximize lead discovery
+        for query_type in ["solar installers", "solar energy contractors", "solar panels", "commercial solar EPC"]:
             q = f"{query_type} {loc}"
             logger.info(f"[{idx+1}/{len(queries_to_run)}] Querying DuckDuckGo: {q!r}")
             found_urls = search_ddg_lite(q)

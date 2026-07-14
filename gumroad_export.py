@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/ubuntu/agi-agent/venv/bin/python3
 """
 Gumroad and Google Drive Sync Engine (Multi-Country B2B Solar Edition)
 =====================================================================
@@ -84,7 +84,7 @@ COUNTRY_PRODUCTS = {
         "name": "Canada Solar Energy Installers B2B Leads Database (500+ Companies)",
         "price": "3900",  # $39.00 USD
         "summary": "Verified B2B contact list of active solar installers and contractors in Canada.",
-        "tags": ["solar installers canada", "canada b2b leads", "solar energy ca", "solar contractors", "canada solar"],
+        "tags": ["solar installers ca", "canada b2b", "solar energy ca", "canada solar"],
         "description": (
             "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Canadian Solar Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
@@ -112,7 +112,7 @@ COUNTRY_PRODUCTS = {
         "name": "Australia Solar Energy Installers B2B Leads Database (500+ Companies)",
         "price": "3900",  # $39.00 USD
         "summary": "Verified B2B contact list of active solar installers and contractors in Australia.",
-        "tags": ["solar installers australia", "australia b2b leads", "solar energy au", "solar contractors", "australia solar"],
+        "tags": ["solar installers au", "australia b2b", "solar energy au", "solar au"],
         "description": (
             "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Australian Solar Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
@@ -267,12 +267,14 @@ def sync_to_google_drive(config, country_code):
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return None
 
-def main():
-    parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
-    parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
-    args = parser.parse_args()
-    
-    cc = args.country.upper()
+def main(country_code=None):
+    if country_code is None:
+        parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
+        parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
+        args = parser.parse_args()
+        cc = args.country.upper()
+    else:
+        cc = country_code.upper()
     token = get_gumroad_token()
     if not token:
         return
