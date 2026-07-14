@@ -1,47 +1,43 @@
-#!/home/ubuntu/agi-agent/venv/bin/python3
+#!/usr/bin/env python3
 """
 Gumroad and Google Drive Sync Engine (Multi-Country B2B Solar Edition)
 =====================================================================
-Supports independent products per country (US, UK, CA, AU).
-1. Uploads/Updates country-specific CSV to Google Drive (using gws).
-2. Sets public read permissions on the Drive file.
-3. Creates or updates the country-specific Gumroad product via API.
+Synchronizes country-specific CSV files with separate Gumroad products
+and public Google Drive direct download links.
 """
 import os
 import json
 import logging
-import argparse
 import subprocess
 import requests
+import argparse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("multi_country_sync")
+logger = logging.getLogger("global_sync_engine")
 
 CONFIG_FILE = "gumroad_config.json"
 GWS_PATH = "/home/ubuntu/.local/bin/gws"
 GDRIVE_PARENT_FOLDER = "1iOg0JEXQokgW16LQMsezeSm_-rIF_6h9"
 
-# Country-specific products and marketing configs
 COUNTRY_PRODUCTS = {
     "US": {
         "csv": "us_solar_installers.csv",
-        "name": "US Solar Energy Installers B2B Leads Database (500+ Companies)",
-        "price": "5900",  # $59.00 USD
-        "summary": "Verified B2B contact list of active solar installers and contractors across all 50 US states.",
-        "tags": ["solar installers us", "us b2b leads", "solar energy us", "solar contractors", "usa solar"],
+        "name": "US Solar Energy Installers B2B Leads Database (600+ Leads)",
+        "price": "4900",  # $49.00 USD
+        "summary": "Verified B2B list of 600+ solar installers and EPC contractors in the United States.",
         "description": (
-            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality US Solar Leads\n\n"
+            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality US Solar Industry Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
-            "installers, and commercial solar EPC companies operating across all 50 states in the United States.\n\n"
+            "residential/commercial solar installers, and EPC companies operating across all 50 US states.\n\n"
             "----\n\n"
             "#### 📊 Fields Included per Record:\n"
             "* **Company Name:** Primary trading name of the contractor.\n"
-            "* **Legal Name:** Registered corporate name (LLC, Inc., Corp. extracted from legal pages).\n"
+            "* **Legal Name:** Registered corporate name (e.g. LLC, Inc., Corp.).\n"
             "* **Email:** Verified corporate contact email address.\n"
-            "* **Phone:** Standardized direct contact number (US formatted).\n"
+            "* **Phone:** Standardized direct contact number (+1 formatted).\n"
             "* **Website:** Official corporate website URL.\n"
-            "* **Address:** Corporate physical headquarters address.\n"
-            "* **Location:** State and Country location.\n"
+            "* **Address:** Corporate physical headquarters location.\n"
+            "* **Location:** State and City.\n"
             "* **Social Links:** Direct corporate profiles (LinkedIn and Facebook).\n\n"
             "----\n\n"
             "#### 🚀 Ideal for:\n"
@@ -53,85 +49,82 @@ COUNTRY_PRODUCTS = {
     },
     "UK": {
         "csv": "uk_solar_installers.csv",
-        "name": "UK Solar Energy Installers B2B Leads Database (500+ Companies)",
-        "price": "4900",  # $49.00 USD
-        "summary": "Verified B2B contact list of active solar installers and contractors in the United Kingdom.",
-        "tags": ["solar installers uk", "uk b2b leads", "solar energy uk", "solar contractors", "uk solar"],
+        "name": "UK Solar Energy Installers B2B Leads Database (400+ Leads)",
+        "price": "2900",  # $29.00 USD
+        "summary": "Verified B2B list of 400+ solar panel installers and certified contractors in the United Kingdom.",
         "description": (
-            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality UK Solar Leads\n\n"
+            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality UK Solar Industry Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
-            "installers, and commercial solar EPC companies operating in England, Scotland, Wales, and Northern Ireland.\n\n"
+            "residential solar panel installers, and commercial contractors operating across the United Kingdom (England, Scotland, Wales, and Northern Ireland).\n\n"
             "----\n\n"
             "#### 📊 Fields Included per Record:\n"
             "* **Company Name:** Primary trading name of the contractor.\n"
-            "* **Legal Name:** Registered corporate name (Ltd, Plc extracted from legal pages).\n"
+            "* **Legal Name:** Registered corporate name (e.g. Ltd, PLC).\n"
             "* **Email:** Verified corporate contact email address.\n"
-            "* **Phone:** Standardized direct contact number (UK formatted).\n"
+            "* **Phone:** Standardized direct contact number (+44 formatted).\n"
             "* **Website:** Official corporate website URL.\n"
-            "* **Address:** Corporate physical headquarters address.\n"
-            "* **Location:** City/Region and Country location.\n"
+            "* **Address:** Corporate physical headquarters location.\n"
+            "* **Location:** City and Region.\n"
             "* **Social Links:** Direct corporate profiles (LinkedIn and Facebook).\n\n"
             "----\n\n"
             "#### 🚀 Ideal for:\n"
-            "* **Solar Manufacturers & Distributors:** Sell equipment directly to active local installers.\n"
-            "* **SaaS & Software Providers:** Sell project management, design, or CRM tools targeting solar contractors.\n"
-            "* **B2B Outbound Agencies:** High-quality, verified contact sheets for cold outreach campaigns.\n\n"
+            "* **Solar Manufacturers & Distributors:** Sell solar PV panels, inverters, and battery storage solutions directly to active UK installers.\n"
+            "* **SaaS & Software Providers:** Sell project design or field service management tools targeting solar contractors.\n"
+            "* **B2B Outbound Agencies:** Clean contact lists for target outreach.\n\n"
             "**Note:** This dataset is automatically updated and expanded on a weekly basis to guarantee fresh, valid contacts."
         )
     },
     "CA": {
         "csv": "ca_solar_installers.csv",
-        "name": "Canada Solar Energy Installers B2B Leads Database (500+ Companies)",
-        "price": "3900",  # $39.00 USD
-        "summary": "Verified B2B contact list of active solar installers and contractors in Canada.",
-        "tags": ["solar installers ca", "canada b2b", "solar energy ca", "canada solar"],
+        "name": "Canada Solar Energy Installers B2B Leads Database (300+ Leads)",
+        "price": "2900",  # $29.00 USD
+        "summary": "Verified B2B list of 300+ solar panel contractors, residential installers and solar EPCs in Canada.",
         "description": (
-            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Canadian Solar Leads\n\n"
+            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Canadian Solar Industry Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
-            "installers, and commercial solar EPC companies operating across all Canadian provinces.\n\n"
+            "residential installers, and commercial solar EPC companies operating across all Canadian provinces (Ontario, BC, Quebec, Alberta, etc.).\n\n"
             "----\n\n"
             "#### 📊 Fields Included per Record:\n"
             "* **Company Name:** Primary trading name of the contractor.\n"
-            "* **Legal Name:** Registered corporate name (Inc., Ltd. extracted from legal pages).\n"
+            "* **Legal Name:** Registered corporate name (e.g. Inc., Ltd., Corp.).\n"
             "* **Email:** Verified corporate contact email address.\n"
-            "* **Phone:** Standardized direct contact number (CA formatted).\n"
+            "* **Phone:** Standardized direct contact number (+1 formatted).\n"
             "* **Website:** Official corporate website URL.\n"
-            "* **Address:** Corporate physical headquarters address.\n"
-            "* **Location:** Province and Country location.\n"
+            "* **Address:** Corporate physical headquarters location.\n"
+            "* **Location:** Province and City.\n"
             "* **Social Links:** Direct corporate profiles (LinkedIn and Facebook).\n\n"
             "----\n\n"
             "#### 🚀 Ideal for:\n"
-            "* **Solar Manufacturers & Distributors:** Sell equipment directly to active local installers.\n"
-            "* **SaaS & Software Providers:** Sell project management, design, or CRM tools targeting solar contractors.\n"
+            "* **Solar Equipment Distributors:** Sell wholesale panels, inverters, and storage setups to Canadian contractors.\n"
+            "* **SaaS & Software Providers:** Target active solar engineering firms with CRM or project design software.\n"
             "* **B2B Outbound Agencies:** High-quality, verified contact sheets for cold outreach campaigns.\n\n"
             "**Note:** This dataset is automatically updated and expanded on a weekly basis to guarantee fresh, valid contacts."
         )
     },
     "AU": {
         "csv": "au_solar_installers.csv",
-        "name": "Australia Solar Energy Installers B2B Leads Database (500+ Companies)",
-        "price": "3900",  # $39.00 USD
-        "summary": "Verified B2B contact list of active solar installers and contractors in Australia.",
-        "tags": ["solar installers au", "australia b2b", "solar energy au", "solar au"],
+        "name": "Australia Solar Energy Installers B2B Leads Database (300+ Leads)",
+        "price": "2900",  # $29.00 USD
+        "summary": "Verified B2B list of 300+ solar PV installers and commercial contractors in Australia.",
         "description": (
-            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Australian Solar Leads\n\n"
+            "### ⚡ Scale Your B2B Outbound Campaigns with High-Quality Australian Solar Industry Leads\n\n"
             "This verified B2B commercial database contains a curated list of active solar energy contractors, "
-            "installers, and commercial solar EPC companies operating across all Australian states.\n\n"
+            "solar PV installers, and commercial contractors operating across all Australian states (NSW, Victoria, Queensland, WA, etc.).\n\n"
             "----\n\n"
             "#### 📊 Fields Included per Record:\n"
             "* **Company Name:** Primary trading name of the contractor.\n"
-            "* **Legal Name:** Registered corporate name (Pty Ltd extracted from legal pages).\n"
+            "* **Legal Name:** Registered corporate name (e.g. Pty Ltd, Ltd.).\n"
             "* **Email:** Verified corporate contact email address.\n"
-            "* **Phone:** Standardized direct contact number (AU formatted).\n"
+            "* **Phone:** Standardized direct contact number (+61 formatted).\n"
             "* **Website:** Official corporate website URL.\n"
-            "* **Address:** Corporate physical headquarters address.\n"
-            "* **Location:** State and Country location.\n"
+            "* **Address:** Corporate physical headquarters location.\n"
+            "* **Location:** State and City.\n"
             "* **Social Links:** Direct corporate profiles (LinkedIn and Facebook).\n\n"
             "----\n\n"
             "#### 🚀 Ideal for:\n"
-            "* **Solar Manufacturers & Distributors:** Sell equipment directly to active local installers.\n"
-            "* **SaaS & Software Providers:** Sell project management, design, or CRM tools targeting solar contractors.\n"
-            "* **B2B Outbound Agencies:** High-quality, verified contact sheets for cold outreach campaigns.\n\n"
+            "* **Renewable Manufacturers & Wholesalers:** Sell panels, inverters, and commercial PV structures to local contractors.\n"
+            "* **SaaS & Software Providers:** Pitch CRM, design, or project mapping software directly to engineers.\n"
+            "* **B2B Outbound Agencies:** High-quality verified listings for marketing campaigns.\n\n"
             "**Note:** This dataset is automatically updated and expanded on a weekly basis to guarantee fresh, valid contacts."
         )
     }
@@ -164,58 +157,48 @@ def save_config(config):
 def create_gumroad_product(token, country_code):
     url = "https://api.gumroad.com/v2/products"
     headers = {"Authorization": f"Bearer {token}"}
-    pinfo = COUNTRY_PRODUCTS[country_code]
-    
+    pdata = COUNTRY_PRODUCTS[country_code]
     payload = {
-        "name": pinfo["name"],
-        "price": pinfo["price"],
-        "description": pinfo["description"],
-        "summary": pinfo["summary"],
+        "name": pdata["name"],
+        "price": pdata["price"],
+        "description": pdata["description"],
+        "summary": pdata["summary"],
         "shown_on_profile": "true"
     }
     
-    logger.info(f"Registering product {pinfo['name']} on Gumroad...")
+    logger.info(f"Registering product on Gumroad for {country_code}...")
     try:
         r = requests.post(url, data=payload, headers=headers, timeout=15)
         if r.status_code in [200, 201]:
             res = r.json()
             product = res.get("product", {})
-            product_id = product.get("id")
-            
-            # Optimize tags and summary SEO
-            logger.info("Optimizing product SEO tags on Gumroad...")
-            update_url = f"https://api.gumroad.com/v2/products/{product_id}"
-            update_payload = {
-                "tags": pinfo["tags"],
-                "custom_summary": pinfo["summary"]
-            }
-            requests.put(update_url, headers=headers, json=update_payload, timeout=10)
-            
-            return product_id
+            return product.get("id")
     except Exception as e:
-        logger.error(f"Error registering product on Gumroad: {e}")
+        logger.error(f"Error registering product on Gumroad for {country_code}: {e}")
     return None
 
 def publish_gumroad_product(token, product_id):
     url = f"https://api.gumroad.com/v2/products/{product_id}/enable"
     headers = {"Authorization": f"Bearer {token}"}
+    logger.info(f"Publishing product {product_id} on Gumroad to make it live...")
     try:
         r = requests.put(url, headers=headers, timeout=15)
         if r.status_code == 200:
             logger.info("✅ Product status on Gumroad is now enabled/live!")
             return True
     except Exception as e:
-        logger.error(f"Error publishing Gumroad product: {e}")
+        logger.error(f"Error publishing Gumroad product {product_id}: {e}")
     return False
 
 def sync_to_google_drive(config, country_code):
-    cc = country_code.upper()
-    country_cfg = config.get(cc, {})
-    file_id = country_cfg.get("gdrive_file_id")
-    csv_file = COUNTRY_PRODUCTS[cc]["csv"]
+    if country_code not in config:
+        config[country_code] = {}
+        
+    file_id = config[country_code].get("gdrive_file_id")
+    csv_file = COUNTRY_PRODUCTS[country_code]["csv"]
     
     if not file_id:
-        logger.info(f"First run for {cc}: Uploading file to Google Drive...")
+        logger.info(f"First run for {country_code}: Uploading file to Google Drive...")
         cmd = [
             GWS_PATH, "drive", "files", "create",
             "--upload", csv_file,
@@ -231,13 +214,11 @@ def sync_to_google_drive(config, country_code):
                 
             if file_id:
                 logger.info(f"✅ File uploaded to Google Drive. File ID: {file_id}")
-                if cc not in config:
-                    config[cc] = {}
-                config[cc]["gdrive_file_id"] = file_id
+                config[country_code]["gdrive_file_id"] = file_id
                 save_config(config)
                 
                 # Make the file public
-                logger.info("Setting public reader permissions on the Drive file...")
+                logger.info(f"Setting public reader permissions on the Drive file {file_id}...")
                 perm_cmd = [
                     GWS_PATH, "drive", "permissions", "create",
                     "--params", json.dumps({"fileId": file_id}),
@@ -251,7 +232,7 @@ def sync_to_google_drive(config, country_code):
             logger.error(f"Error uploading to Google Drive: {e}")
             return None
     else:
-        logger.info(f"Updating existing file on Google Drive for {cc} (File ID: {file_id})...")
+        logger.info(f"Updating existing file on Google Drive (File ID: {file_id})...")
         cmd = [
             GWS_PATH, "drive", "files", "update",
             "--params", json.dumps({"fileId": file_id}),
@@ -267,14 +248,12 @@ def sync_to_google_drive(config, country_code):
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return None
 
-def main(country_code=None):
-    if country_code is None:
-        parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
-        parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
-        args = parser.parse_args()
-        cc = args.country.upper()
-    else:
-        cc = country_code.upper()
+def main():
+    parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
+    parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
+    args = parser.parse_args()
+    
+    cc = args.country.upper()
     token = get_gumroad_token()
     if not token:
         return

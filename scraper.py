@@ -1,13 +1,12 @@
-#!/home/ubuntu/agi-agent/venv/bin/python3
+#!/usr/bin/env python3
 """
-Global Solar Leads Database Scraper (Resilient Enterprise Engine v1)
-====================================================================
-Targets English-speaking markets: US, UK, Canada, and Australia.
+Global Solar Leads Database Scraper (Resilient Enterprise Harvester v1)
+=====================================================================
+Multi-country engine supporting US, UK, Canada (CA), and Australia (AU).
 Features:
-- Global Normalizers: Handles US/CA, UK, and AU phone/postal code formats.
-- US/UK/CA/AU Locations: Iterates through states, provinces, and major cities.
-- Thread-Safe Real-time Saving: Saves verified leads instantly to CSV.
-- HTML/JavaScript Filter: Discards code leakages in addresses.
+- Country-specific normalizers, target locations, and output files.
+- Resilient concurrent crawling with DuckDuckGo fallback query loops.
+- Thread-safe real-time saving and incremental deduplication.
 """
 import os
 import csv
@@ -17,6 +16,7 @@ import urllib3
 import logging
 import requests
 import html
+import argparse
 import threading
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
@@ -40,37 +40,28 @@ COUNTRY_DATA = {
             "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina",
             "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
             "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
-            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago",
-            "Austin", "Jacksonville", "Fort Worth", "Columbus", "Charlotte", "Indianapolis", "San Francisco", "Seattle", "Denver"
+            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago"
         ]
     },
     "UK": {
         "csv": "uk_solar_installers.csv",
         "locations": [
             "London", "Manchester", "Birmingham", "Leeds", "Glasgow", "Edinburgh", "Liverpool", "Bristol", 
-            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton",
-            "Brighton", "Bristol", "Oxford", "Cambridge", "Bath", "Derby", "Exeter", "Gloucester", "Lincoln", "Norwich",
-            "Plymouth", "Portsmouth", "Preston", "Salisbury", "St Albans", "Sunderland", "Wakefield", "York", "Aberdeen",
-            "Dundee", "Swansea", "Newport", "Milton Keynes", "Reading", "Northampton", "Luton", "Swindon", "Warrington"
+            "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton"
         ]
     },
     "CA": {
         "csv": "ca_solar_installers.csv",
         "locations": [
             "Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba", "Saskatchewan", "Nova Scotia", 
-            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City",
-            "Mississauga", "Brampton", "Hamilton", "London", "Markham", "Vaughan", "Kitchener", "Windsor", "Richmond Hill",
-            "Oakville", "Burlington", "Greater Sudbury", "Oshawa", "Barrie", "St Catharines", "Cambridge", "Kingston",
-            "Guelph", "Waterloo", "Thunder Bay", "Brantford", "Pickering", "Niagara Falls", "Victoria", "Kelowna"
+            "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City"
         ]
     },
     "AU": {
         "csv": "au_solar_installers.csv",
         "locations": [
             "New South Wales", "Victoria", "Queensland", "Western Australia", "South Australia", "Tasmania", 
-            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast",
-            "Newcastle", "Wollongong", "Geelong", "Townsville", "Cairns", "Toowoomba", "Ballarat", "Bendigo", "Albury",
-            "Launceston", "Mackay", "Rockhampton", "Bunbury", "Bundaberg", "Coffs Harbour", "Wagga Wagga", "Mildura"
+            "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast"
         ]
     }
 }
@@ -89,12 +80,6 @@ HEADERS = {
 # Regex definitions
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 PHONE_REGEX = re.compile(r"\+?\b[1-9]\d{1,14}\b|\b(?:\d{3}[-.\s]??\d{3}[-.\s]??\d{4}|\(\d{3}\)\s*\d{3}[-.\s]??\d{4})\b")
-US_ZIP_REGEX = re.compile(r"\b\d{5}(?:-\d{4})?\b")
-UK_POSTCODE_REGEX = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", re.IGNORECASE)
-CA_POSTAL_REGEX = re.compile(r"\b[A-Z]\d[A-Z]\s*\d[A-Z]\d\b", re.IGNORECASE)
-
-# Suffixes for English Corporate Entities
-CORP_SUFFIXES = r"\b([A-Z0-9\s,.-]{3,45}\s(?:LLC|Inc\.?|Corp\.?|Ltd\.?|Plc\.?|Pty\s+Ltd\.?|Group|Energy|Solar))\b"
 
 BLOCKED_DOMAINS = [
     "google.com", "duckduckgo.com", "facebook.com", "instagram.com", "linkedin.com",
@@ -129,8 +114,8 @@ def clean_company_name(name):
     name = " ".join([w.capitalize() for w in name.split()])
     return name
 
-def clean_phone(phone):
-    """Normalize US/CA, UK, and AU phone numbers."""
+def clean_phone(phone, country_code="US"):
+    """Normalize phone numbers based on country code formatting rules."""
     if not phone:
         return ""
     digits = "".join(re.findall(r"\d", phone))
@@ -139,23 +124,22 @@ def clean_phone(phone):
     if digits in ["9999999999", "1234567890", "0000000000", "999999999"]:
         return ""
         
-    # US/Canada format: 10 digits (or 11 digits starting with 1)
-    if len(digits) == 10:
-        return f"+1 ({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
-    elif len(digits) == 11 and digits.startswith("1"):
-        return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:11]}"
-        
-    # UK Format: starts with 44 or 0 (length 10-11)
-    if digits.startswith("44") and len(digits) > 10:
-        return f"+44 {digits[2:6]} {digits[6:]}"
-    elif digits.startswith("0") and len(digits) == 11 and not digits.startswith("00"):
-        return f"+44 {digits[1:5]} {digits[5:]}"
-        
-    # Australia format: starts with 61 (length 11-12)
-    if digits.startswith("61") and len(digits) >= 11:
-        return f"+61 {digits[2]} {digits[3:7]} {digits[7:]}"
-        
-    # Generic format
+    if country_code in ["US", "CA"]:
+        if len(digits) == 10:
+            return f"+1 ({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
+        elif len(digits) == 11 and digits.startswith("1"):
+            return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:11]}"
+    elif country_code == "UK":
+        if digits.startswith("44") and len(digits) > 10:
+            return f"+44 {digits[2:6]} {digits[6:]}"
+        elif digits.startswith("0") and len(digits) == 11:
+            return f"+44 {digits[1:5]} {digits[5:]}"
+    elif country_code == "AU":
+        if digits.startswith("61") and len(digits) >= 11:
+            return f"+61 {digits[2]} {digits[3:7]} {digits[7:]}"
+        elif digits.startswith("0") and len(digits) == 10:
+            return f"+61 {digits[1]} {digits[2:6]} {digits[6:]}"
+            
     if len(phone.strip()) > 7:
         return phone.strip()
     return ""
@@ -236,9 +220,12 @@ def search_ddg_lite(query):
             
     return links
 
-def extract_legal_name(text):
-    """Extracts English corporate legal names (LLC, Inc., Ltd., etc.)."""
-    matches = re.findall(CORP_SUFFIXES, text, re.IGNORECASE)
+def extract_legal_name(text, country_code="US"):
+    """Extracts corporate legal names based on country-specific legal suffixes."""
+    # Suffixes for English Corporate Entities
+    suffixes = r"\b([A-Z0-9\s,.-]{3,45}\s(?:LLC|Inc\.?|Corp\.?|Ltd\.?|Plc\.?|Pty\s+Ltd\.?|Group|Energy|Solar))\b"
+    matches = re.findall(suffixes, text, re.IGNORECASE)
+    
     if matches:
         cleaned = []
         for m in matches:
@@ -265,7 +252,7 @@ def extract_social_links(soup, base_url):
             socials["facebook"] = a["href"]
     return socials
 
-def crawl_company_site(base_url, location_name=""):
+def crawl_company_site(base_url, location_name="", country_code="US"):
     """Crawls corporate site and extracts B2B contact info."""
     lead = {
         "name": "",
@@ -307,7 +294,7 @@ def crawl_company_site(base_url, location_name=""):
             lead["email"] = valid_emails[0].lower().strip()
             
         if phones:
-            lead["phone"] = clean_phone(phones[0])
+            lead["phone"] = clean_phone(phones[0], country_code)
             
         # Scan standard legal pages
         subpages = []
@@ -319,6 +306,15 @@ def crawl_company_site(base_url, location_name=""):
                 subpages.append(sub_url)
                 
         subpages = list(set(subpages))[:3]
+        
+        # Define country specific postal/zip regexes
+        zip_regexes = {
+            "US": re.compile(r"\b\d{5}(?:-\d{4})?\b"),
+            "UK": re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", re.IGNORECASE),
+            "CA": re.compile(r"\b[A-Z]\d[A-Z]\s*\d[A-Z]\d\b", re.IGNORECASE),
+            "AU": re.compile(r"\b\d{4}\b")
+        }
+        zip_regex = zip_regexes.get(country_code, zip_regexes["US"])
         
         for sub_url in subpages:
             try:
@@ -336,16 +332,15 @@ def crawl_company_site(base_url, location_name=""):
                     if not lead["phone"]:
                         sub_phones = PHONE_REGEX.findall(sub_text)
                         if sub_phones:
-                            lead["phone"] = clean_phone(sub_phones[0])
+                            lead["phone"] = clean_phone(sub_phones[0], country_code)
                             
                     if not lead["legal_name"]:
-                        ln = extract_legal_name(sub_text)
+                        ln = extract_legal_name(sub_text, country_code)
                         if ln:
                             lead["legal_name"] = ln
                             
                     if not lead["address"]:
-                        # Match postal code locations
-                        match_code = US_ZIP_REGEX.search(sub_text) or UK_POSTCODE_REGEX.search(sub_text) or CA_POSTAL_REGEX.search(sub_text)
+                        match_code = zip_regex.search(sub_text)
                         if match_code:
                             code_idx = sub_text.find(match_code.group(0))
                             start = max(0, code_idx - 65)
@@ -378,9 +373,9 @@ def load_existing_leads():
                 if header:
                     for row in reader:
                         if len(row) >= 6:
-                            email = row[3].lower().strip()
-                            phone = row[4].strip()
-                            web = row[5].lower().strip()
+                            email = row[2].lower().strip()
+                            phone = row[3].strip()
+                            web = row[4].lower().strip()
                             
                             seen_websites.add(web)
                             if email:
@@ -409,9 +404,14 @@ def append_lead_to_csv(lead):
                 lead["address"], lead["location"], lead["linkedin"], lead["facebook"]
             ])
 
-def build_database(max_queries=20):
+def build_database(max_queries=20, country_code="US"):
     """Gathers global B2B leads from search engine and crawls them concurrently."""
-    logger.info("Initializing Global B2B Leads Engine...")
+    global OUTPUT_CSV, LOCATIONS
+    
+    OUTPUT_CSV = COUNTRY_DATA[country_code]["csv"]
+    LOCATIONS = COUNTRY_DATA[country_code]["locations"]
+    
+    logger.info(f"Initializing Global B2B Leads Engine for {country_code}...")
     
     seen_websites, seen_contacts = load_existing_leads()
     all_domains = {}
@@ -419,8 +419,8 @@ def build_database(max_queries=20):
     # 2. Gather domains by global locations
     queries_to_run = LOCATIONS[:max_queries]
     for idx, loc in enumerate(queries_to_run):
-        # We loop through 4 targeted B2B query types per region to maximize lead discovery
-        for query_type in ["solar installers", "solar energy contractors", "solar panels", "commercial solar EPC"]:
+        # We loop through 2 targeted B2B query types per region
+        for query_type in ["solar installers", "solar energy contractors"]:
             q = f"{query_type} {loc}"
             logger.info(f"[{idx+1}/{len(queries_to_run)}] Querying DuckDuckGo: {q!r}")
             found_urls = search_ddg_lite(q)
@@ -433,9 +433,9 @@ def build_database(max_queries=20):
                 clean_url = f"{parsed.scheme}://{parsed.netloc}"
                 if clean_url.lower().strip() not in seen_websites and domain not in all_domains:
                     all_domains[domain] = (clean_url, loc)
-            time.sleep(7.0)
+            time.sleep(7.0) # Respectful delay to prevent rate limit blocks
         
-    logger.info(f"Target NEW unique global domains collected: {len(all_domains)}")
+    logger.info(f"Target NEW unique domains collected for {country_code}: {len(all_domains)}")
     if not all_domains:
         logger.info("No new domains to crawl. Database is up to date!")
         return
@@ -446,7 +446,7 @@ def build_database(max_queries=20):
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(crawl_company_site, url, loc): url
+            executor.submit(crawl_company_site, url, loc, country_code): url
             for domain, (url, loc) in all_domains.items()
         }
         
@@ -470,23 +470,12 @@ def build_database(max_queries=20):
             except Exception as e:
                 logger.error(f"Error crawling worker result for {url}: {e}")
                 
-    logger.info(f"🥇 GLOBAL CRAWL COMPLETE! Added {new_leads_count} new leads directly to {OUTPUT_CSV}")
+    logger.info(f"🥇 CRAWL COMPLETE FOR {country_code}! Added {new_leads_count} new leads directly to {OUTPUT_CSV}")
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Global B2B Solar Leads Harvester")
+    parser = argparse.ArgumentParser(description="Global B2B Leads Harvester")
     parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], default="US", help="Target country code")
     parser.add_argument("--max-queries", type=int, default=15, help="Number of locations to query")
     args = parser.parse_args()
     
-    country = args.country.upper()
-    if country in COUNTRY_DATA:
-        OUTPUT_CSV = COUNTRY_DATA[country]["csv"]
-        LOCATIONS = COUNTRY_DATA[country]["locations"]
-        logger.info(f"Setting target country: {country}")
-        logger.info(f"Target CSV: {OUTPUT_CSV}")
-        logger.info(f"Total locations available: {len(LOCATIONS)}")
-        
-        build_database(max_queries=args.max_queries)
-    else:
-        logger.error(f"Invalid country selected: {country}")
+    build_database(max_queries=args.max_queries, country_code=args.country.upper())
