@@ -17,7 +17,7 @@ logger = logging.getLogger("global_sync_engine")
 
 CONFIG_FILE = "gumroad_config.json"
 GWS_PATH = "/home/ubuntu/.local/bin/gws"
-GDRIVE_PARENT_FOLDER = "1iOg0JEXQokgW16LQMsezeSm_-rIF_6h9"
+GDRIVE_PARENT_FOLDER = "1Fb-R4zQ1EiQIJZCGlGMg8WxbUpIlvABf"
 
 COUNTRY_PRODUCTS = {
     "US": {
