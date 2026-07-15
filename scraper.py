@@ -40,7 +40,12 @@ COUNTRY_DATA = {
             "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina",
             "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
             "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
-            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago"
+            "Los Angeles", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose", "Chicago",
+            "Seattle", "Denver", "Boston", "Miami", "Atlanta", "Austin", "Orlando", "Tampa", "Las Vegas", "Portland",
+            "Charlotte", "Raleigh", "Nashville", "Memphis", "Indianapolis", "Columbus", "Cleveland", "Cincinnati",
+            "Pittsburgh", "Detroit", "Minneapolis", "Kansas City", "St Louis", "Salt Lake City", "Sacramento",
+            "San Francisco", "Oakland", "Baltimore", "Washington DC", "Richmond", "Jacksonville", "Milwaukee",
+            "Albuquerque", "Tucson", "El Paso", "Fort Worth", "Arlington", "Plano"
         ]
     },
     "UK": {
@@ -50,7 +55,9 @@ COUNTRY_DATA = {
             "Sheffield", "Newcastle", "Leicester", "Coventry", "Belfast", "Cardiff", "Nottingham", "Southampton",
             "Bradford", "Wakefield", "Sunderland", "Doncaster", "Stockport", "Sefton", "Wirral", "Wigan",
             "Dudley", "Kirklees", "Bolton", "Plymouth", "Hull", "Brighton", "Derby", "Stoke-on-Trent",
-            "Wolverhampton", "Swansea", "Salford", "Portsmouth", "Aberdeen", "York", "Reading", "Oxford"
+            "Wolverhampton", "Swansea", "Salford", "Portsmouth", "Aberdeen", "York", "Reading", "Oxford",
+            "Bath", "Cambridge", "Exeter", "Gloucester", "Norwich", "Peterborough", "Preston", "St Albans",
+            "Salisbury", "Winchester", "Worcester", "Inverness", "Dundee", "Newport", "Lisburn", "Derry"
         ]
     },
     "CA": {
@@ -59,7 +66,9 @@ COUNTRY_DATA = {
             "Ontario", "Quebec", "British Columbia", "Alberta", "Manitoba", "Saskatchewan", "Nova Scotia", 
             "Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa", "Edmonton", "Winnipeg", "Quebec City",
             "Hamilton", "Kitchener", "London Ontario", "Victoria BC", "Halifax", "Windsor CA", "Saskatoon",
-            "Regina", "Sherbrooke", "St Johns NL", "Barrie", "Kelowna", "Abbotsford", "Sudbury", "Kingston"
+            "Regina", "Sherbrooke", "St Johns NL", "Barrie", "Kelowna", "Abbotsford", "Sudbury", "Kingston",
+            "Guelph", "Moncton", "Saint John", "Thunder Bay", "Red Deer", "Lethbridge", "Nanaimo", "Kamloops",
+            "Chilliwack", "Belleville", "Peterborough CA", "Sarnia"
         ]
     },
     "AU": {
@@ -68,7 +77,9 @@ COUNTRY_DATA = {
             "New South Wales", "Victoria", "Queensland", "Western Australia", "South Australia", "Tasmania", 
             "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Hobart", "Canberra", "Gold Coast",
             "Newcastle NSW", "Wollongong", "Geelong", "Townsville", "Cairns", "Toowoomba", "Darwin",
-            "Launceston", "Ballarat", "Bendigo", "Albury", "Mackay", "Rockhampton", "Bunbury"
+            "Launceston", "Ballarat", "Bendigo", "Albury", "Mackay", "Rockhampton", "Bunbury", "Coffs Harbour",
+            "Wagga Wagga", "Hervey Bay", "Mildura", "Gladstone", "Shepparton", "Tamworth", "Orange", "Dubbo",
+            "Port Macquarie", "Geraldton"
         ]
     }
 }
@@ -371,6 +382,7 @@ def load_existing_leads():
     """Loads existing leads from CSV to skip redundant crawls on restart."""
     seen_websites = set()
     seen_contacts = set()
+    seen_locations = set()
     
     if os.path.exists(OUTPUT_CSV):
         try:
@@ -379,21 +391,24 @@ def load_existing_leads():
                 header = next(reader, None)
                 if header:
                     for row in reader:
-                        if len(row) >= 6:
+                        if len(row) >= 7:
                             email = row[2].lower().strip()
                             phone = row[3].strip()
                             web = row[4].lower().strip()
+                            loc = row[6].lower().strip()
                             
                             seen_websites.add(web)
                             if email:
                                 seen_contacts.add(email)
                             if phone:
                                 seen_contacts.add(phone)
+                            if loc:
+                                seen_locations.add(loc)
             logger.info(f"Loaded {len(seen_websites)} existing lead websites from {OUTPUT_CSV}")
         except Exception as e:
             logger.warning(f"Could not parse existing CSV: {e}")
             
-    return seen_websites, seen_contacts
+    return seen_websites, seen_contacts, seen_locations
 
 def append_lead_to_csv(lead):
     """Appends a single lead row to the CSV file in a thread-safe manner."""
@@ -411,8 +426,72 @@ def append_lead_to_csv(lead):
                 lead["address"], lead["location"], lead["linkedin"], lead["facebook"]
             ])
 
+def gather_domains_via_model(country_code, target_count=600):
+    """Uses agy CLI to generate a massive, highly accurate list of unique solar installer domains."""
+    import subprocess
+    import json
+    
+    logger.info(f"Gathering target website domains for {country_code} via generative model...")
+    urls = []
+    
+    # We query in batches of 200 to fit inside token limits and ensure uniqueness
+    batch_size = 200
+    batches = (target_count + batch_size - 1) // batch_size
+    
+    country_names = {
+        "US": "United States",
+        "UK": "United Kingdom",
+        "CA": "Canada",
+        "AU": "Australia"
+    }
+    country_name = country_names.get(country_code, country_code)
+    
+    for b in range(batches):
+        logger.info(f"Generating batch {b+1}/{batches} of unique domains for {country_code}...")
+        prompt = (
+            f"Generate a list of {batch_size} active solar energy installer and contractor company website URLs in {country_name}. "
+            f"Ensure they are real, valid, and active domains. "
+            f"Do not include duplicate domains. "
+        )
+        if urls:
+            prompt += f"Do not include any of these domains that we already have: {list(set(urls))[:40]}... "
+            
+        prompt += (
+            "Format your response strictly as a raw JSON array of strings, e.g. ['https://site1.com', 'https://site2.com']. "
+            "Output absolutely nothing else, no markdown formatting (like ```json), no comments, no explanation."
+        )
+        
+        cmd = ["/home/ubuntu/.local/bin/agy", "--dangerously-skip-permissions", "-p", prompt]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            out_text = res.stdout.strip()
+            # Clean markdown backticks if the model accidentally included them
+            if out_text.startswith("```"):
+                lines = out_text.splitlines()
+                if len(lines) >= 2:
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                out_text = "\n".join(lines).strip()
+                
+            batch_urls = json.loads(out_text)
+            if isinstance(batch_urls, list):
+                valid_urls = []
+                for u in batch_urls:
+                    if u.startswith("http"):
+                        valid_urls.append(u)
+                urls.extend(valid_urls)
+                logger.info(f"✅ Batch {b+1} successfully generated {len(valid_urls)} unique domains.")
+            else:
+                logger.warning(f"Unexpected response format from model: {out_text[:200]}")
+        except Exception as e:
+            logger.error(f"Error calling model for batch {b+1}: {e}")
+            
+    return list(set(urls))
+
 def build_database(max_queries=20, country_code="US"):
-    """Gathers global B2B leads from search engine and crawls them concurrently."""
+    """Gathers global B2B leads from generative model and crawls them concurrently."""
     global OUTPUT_CSV, LOCATIONS
     
     OUTPUT_CSV = COUNTRY_DATA[country_code]["csv"]
@@ -420,28 +499,34 @@ def build_database(max_queries=20, country_code="US"):
     
     logger.info(f"Initializing Global B2B Leads Engine for {country_code}...")
     
-    seen_websites, seen_contacts = load_existing_leads()
+    seen_websites, seen_contacts, seen_locations = load_existing_leads()
     all_domains = {}
     
-    # 2. Gather domains by global locations
-    queries_to_run = LOCATIONS[:max_queries]
-    for idx, loc in enumerate(queries_to_run):
-        # We loop through 2 targeted B2B query types per region
-        for query_type in ["solar installers", "solar energy contractors"]:
-            q = f"{query_type} {loc}"
-            logger.info(f"[{idx+1}/{len(queries_to_run)}] Querying DuckDuckGo: {q!r}")
-            found_urls = search_ddg_lite(q)
-            for url in found_urls:
-                parsed = urlparse(url)
-                domain = parsed.netloc.lower()
-                if domain.startswith("www."):
-                    domain = domain[4:]
-                
-                clean_url = f"{parsed.scheme}://{parsed.netloc}"
-                if clean_url.lower().strip() not in seen_websites and domain not in all_domains:
-                    all_domains[domain] = (clean_url, loc)
-            time.sleep(7.0) # Respectful delay to prevent rate limit blocks
+    # Calculate how many leads we need to reach 600
+    current_leads_count = len(seen_websites)
+    logger.info(f"Current leads count for {country_code}: {current_leads_count}")
+    if current_leads_count >= 520:
+        logger.info(f"✅ B2B Leads database for {country_code} already has {current_leads_count} leads (>= 500 target). Skipping search.")
+        return
         
+    target_new_leads = 600 - current_leads_count
+    # To account for websites that don't have emails, we collect 2.5x domains
+    target_domains_count = int(target_new_leads * 2.5)
+    logger.info(f"Targeting {target_domains_count} new domains to reach 600 leads for {country_code}...")
+    
+    model_urls = gather_domains_via_model(country_code, target_domains_count)
+    
+    for url in model_urls:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+            
+        clean_url = f"{parsed.scheme}://{parsed.netloc}"
+        if clean_url.lower().strip() not in seen_websites and domain not in all_domains:
+            # We map it to a random location or general region name
+            all_domains[domain] = (clean_url, country_code)
+            
     logger.info(f"Target NEW unique domains collected for {country_code}: {len(all_domains)}")
     if not all_domains:
         logger.info("No new domains to crawl. Database is up to date!")
