@@ -390,6 +390,90 @@ def link_download_url_to_gumroad(token, product_id, download_url):
         logger.error(f"Error linking download URL via API: {e}")
     return False
 
+def sync_cover_to_google_drive(config, country_code, folder_id, cover_path):
+    country_cfg = config.setdefault(country_code, {})
+    cover_file_id = country_cfg.get("gdrive_cover_file_id")
+    cover_filename = os.path.basename(cover_path)
+    
+    if not cover_file_id:
+        logger.info(f"Uploading cover image '{cover_filename}' to Google Drive...")
+        cmd = [
+            GWS_PATH, "drive", "files", "create",
+            "--upload", cover_path,
+            "--json", json.dumps({"name": cover_filename, "parents": [folder_id]})
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            out_text = res.stdout.strip()
+            if "{" in out_text:
+                json_part = out_text[out_text.index("{"):]
+                data = json.loads(json_part)
+                cover_file_id = data.get("id")
+                
+            if cover_file_id:
+                logger.info(f"✅ Cover image uploaded to Google Drive. File ID: {cover_file_id}")
+                country_cfg["gdrive_cover_file_id"] = cover_file_id
+                save_config(config)
+                
+                # Make the cover public
+                logger.info("Setting public reader permissions on the cover file...")
+                perm_cmd = [
+                    GWS_PATH, "drive", "permissions", "create",
+                    "--params", json.dumps({"fileId": cover_file_id}),
+                    "--json", json.dumps({"role": "reader", "type": "anyone"})
+                ]
+                subprocess.run(perm_cmd, capture_output=True, text=True, check=True)
+                logger.info("✅ Cover file is now public.")
+        except Exception as e:
+            logger.error(f"Error uploading cover to Google Drive: {e}")
+            return None
+    else:
+        logger.info(f"Updating existing cover image on Google Drive (File ID: {cover_file_id})...")
+        cmd = [
+            GWS_PATH, "drive", "files", "update",
+            "--params", json.dumps({"fileId": cover_file_id}),
+            "--upload", cover_path
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info("✅ Google Drive cover file updated successfully.")
+        except Exception as e:
+            logger.error(f"Error updating Google Drive cover file: {e}")
+            
+    if cover_file_id:
+        return f"https://drive.google.com/uc?export=download&id={cover_file_id}"
+    return None
+
+def upload_media_urls_to_gumroad(token, product_id, cover_url):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    # 1. Upload Cover
+    logger.info(f"Uploading cover image to Gumroad product {product_id}...")
+    cover_endpoint = f"https://api.gumroad.com/v2/products/{product_id}/covers"
+    try:
+        r = requests.post(cover_endpoint, headers=headers, json={"url": cover_url}, timeout=20)
+        if r.status_code == 200:
+            logger.info("✅ Cover image successfully uploaded to Gumroad!")
+        else:
+            logger.error(f"Failed to upload cover: {r.status_code} - {r.text}")
+    except Exception as e:
+        logger.error(f"Error uploading cover: {e}")
+        
+    # 2. Upload Thumbnail
+    logger.info(f"Uploading thumbnail image to Gumroad product {product_id}...")
+    thumbnail_endpoint = f"https://api.gumroad.com/v2/products/{product_id}/thumbnail"
+    try:
+        r = requests.post(thumbnail_endpoint, headers=headers, json={"url": cover_url}, timeout=20)
+        if r.status_code == 200:
+            logger.info("✅ Thumbnail image successfully uploaded to Gumroad!")
+        else:
+            logger.error(f"Failed to upload thumbnail: {r.status_code} - {r.text}")
+    except Exception as e:
+        logger.error(f"Error uploading thumbnail: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
     parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
@@ -412,6 +496,13 @@ def main():
     if not download_url:
         logger.error("❌ Google Drive sync failed. Aborting.")
         return
+        
+    # Resolve cover path and upload it to Google Drive
+    folder_id = config.get(cc, {}).get("gdrive_folder_id")
+    cover_path = COUNTRY_PRODUCTS[cc]["cover"]
+    cover_url = None
+    if folder_id and os.path.exists(cover_path):
+        cover_url = sync_cover_to_google_drive(config, cc, folder_id, cover_path)
         
     # 2. Get or Create Gumroad Product
     if cc not in config:
@@ -446,6 +537,8 @@ def main():
     # 3. Publish Gumroad Product
     if product_id:
         link_download_url_to_gumroad(token, product_id, download_url)
+        if cover_url:
+            upload_media_urls_to_gumroad(token, product_id, cover_url)
         publish_gumroad_product(token, product_id)
         
     print("\n" + "="*50)
