@@ -344,6 +344,52 @@ def sync_to_google_drive(config, country_code):
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return None
 
+def link_download_url_to_gumroad(token, product_id, download_url):
+    url = f"https://api.gumroad.com/v2/products/{product_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "rich_content": [
+            {
+                "description": {
+                    "type": "doc",
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "tiptap-link",
+                                    "attrs": {
+                                        "href": download_url
+                                    },
+                                    "content": [
+                                        {
+                                            "text": "Link",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    logger.info(f"Linking download URL to Gumroad product {product_id}...")
+    try:
+        r = requests.put(url, headers=headers, json=payload, timeout=15)
+        if r.status_code == 200:
+            logger.info("✅ Download URL successfully linked to product content via API!")
+            return True
+        else:
+            logger.error(f"Failed to link download URL: {r.status_code} - {r.text}")
+    except Exception as e:
+        logger.error(f"Error linking download URL via API: {e}")
+    return False
+
 def main():
     parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
     parser.add_argument("--country", choices=["US", "UK", "CA", "AU"], required=True, help="Target country code")
@@ -399,6 +445,7 @@ def main():
             
     # 3. Publish Gumroad Product
     if product_id:
+        link_download_url_to_gumroad(token, product_id, download_url)
         publish_gumroad_product(token, product_id)
         
     print("\n" + "="*50)
@@ -406,10 +453,6 @@ def main():
     print(f"🔹 Country Product: {COUNTRY_PRODUCTS[cc]['name']}")
     print(f"🔹 Gumroad Link: {short_url}")
     print(f"🔹 Direct Download Link (Google Drive): {download_url}")
-    print("\n📢 IMPORTANT:")
-    print("Go to your Gumroad Product Settings -> Content for this product, select")
-    print("'Redirect to an external URL' and paste the Direct Download Link above.")
-    print("This only needs to be done ONCE per country product!")
     print("="*50 + "\n")
 
 if __name__ == "__main__":
