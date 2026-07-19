@@ -444,7 +444,7 @@ def sync_cover_to_google_drive(config, country_code, folder_id, cover_path):
         return f"https://drive.google.com/uc?export=download&id={cover_file_id}"
     return None
 
-def upload_media_urls_to_gumroad(token, product_id, cover_url):
+def upload_media_urls_to_gumroad(token, product_id, cover_url, thumb_url=None):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
@@ -463,16 +463,17 @@ def upload_media_urls_to_gumroad(token, product_id, cover_url):
         logger.error(f"Error uploading cover: {e}")
         
     # 2. Upload Thumbnail
-    logger.info(f"Uploading thumbnail image to Gumroad product {product_id}...")
-    thumbnail_endpoint = f"https://api.gumroad.com/v2/products/{product_id}/thumbnail"
-    try:
-        r = requests.post(thumbnail_endpoint, headers=headers, json={"url": cover_url}, timeout=20)
-        if r.status_code == 200:
-            logger.info("✅ Thumbnail image successfully uploaded to Gumroad!")
-        else:
-            logger.error(f"Failed to upload thumbnail: {r.status_code} - {r.text}")
-    except Exception as e:
-        logger.error(f"Error uploading thumbnail: {e}")
+    if thumb_url:
+        logger.info(f"Uploading square thumbnail image to Gumroad product {product_id}...")
+        thumbnail_endpoint = f"https://api.gumroad.com/v2/products/{product_id}/thumbnail"
+        try:
+            r = requests.post(thumbnail_endpoint, headers=headers, json={"url": thumb_url}, timeout=20)
+            if r.status_code == 200 and r.json().get("success"):
+                logger.info("✅ Square thumbnail image successfully uploaded to Gumroad!")
+            else:
+                logger.error(f"Failed to upload thumbnail: {r.status_code} - {r.text}")
+        except Exception as e:
+            logger.error(f"Error uploading thumbnail: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-Country Gumroad Sync Engine")
